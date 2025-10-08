@@ -19,6 +19,7 @@ from .views import (
     EnrollmentDetailView,
 )
 
+
 urlpatterns = [
     # Education Levels
     path("levels", EducationLevelListCreateView.as_view(), name="level_list_create"),
@@ -45,3 +46,26 @@ urlpatterns = [
     path("enrollments", EnrollmentListCreateView.as_view()),
     path("enrollments/<int:pk>", EnrollmentDetailView.as_view()),
 ]
+
+# === ASISTENCIA ===
+from .views import (
+    AttendanceSessionViewSet,
+    AttendanceRecordViewSet,
+    StudentQRCodeViewSet,
+    QRAttendanceScanView,
+    AttendanceScanLogViewSet,
+)
+from django.urls import include
+from rest_framework.routers import DefaultRouter
+
+router = DefaultRouter()
+router.register(r"attendance-sessions", AttendanceSessionViewSet, basename="attendance-sessions")
+router.register(r"attendance-records", AttendanceRecordViewSet, basename="attendance-records")
+router.register(r"student-qr-codes", StudentQRCodeViewSet, basename="student-qr-codes")
+router.register(r"attendance-scan-logs", AttendanceScanLogViewSet, basename="attendance-scan-logs")
+
+urlpatterns += [
+    path("attendance/qr-scan/", QRAttendanceScanView.as_view(), name="attendance-qr-scan"),
+    path("", include(router.urls)),
+]
+

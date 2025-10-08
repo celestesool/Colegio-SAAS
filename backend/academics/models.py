@@ -1,6 +1,14 @@
 # backend/academics/models.py
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.db import models
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from datetime import date, datetime, timedelta
+from django.utils.crypto import get_random_string
+import qrcode
+from io import BytesIO
+from django.core.files.base import ContentFile
 
 
 class EducationLevel(models.Model):
@@ -228,3 +236,176 @@ class Enrollment(models.Model):
 
     def __str__(self):
         return f"{self.student.code} @ {self.period.name} - {self.grade.name}/{self.section.name}"
+
+
+#ASISNECIAS
+#------------------------------------------------------
+
+class AttendanceSession(models.Model):
+    """Sesión de asistencia (una clase específica en una fecha y hora)."""
+    grade = models.ForeignKey("academics.Grade", on_delete=models.PROTECT)
+    section = models.ForeignKey("academics.Section", on_delete=models.PROTECT)
+    subject = models.ForeignKey("academics.Subject", on_delete=models.PROTECT)
+    period = models.ForeignKey("academics.AcademicPeriod", on_delete=models.PROTECT)
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField(null=True, blank=True)
+    is_closed = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-date", "-start_time"]
+        unique_together = [("grade", "section", "subject", "date", "start_time")]
+
+    def clean(self):
+        if self.end_time and self.end_time <= self.start_time:
+            raise ValidationError("La hora de fin debe ser posterior al inicio")
+        if self.date > date.today():
+            raise ValidationError("No se puede crear una sesión futura")
+
+    def __str__(self):
+        return f"{self.subject.name} - {self.grade.name}{self.section.name} ({self.date})"
+
+    @property
+    def total_students(self):
+        from academics.models import Enrollment
+        return Enrollment.objects.filter(
+            grade=self.grade,
+            section=self.section,
+            period=self.period,
+            status="ACTIVE"
+        ).count()
+
+
+class AttendanceRecord(models.Model):
+    """Registro de asistencia de un estudiante en una sesión."""
+    STATUS_CHOICES = [
+        ("PRESENTE", "Presente"),
+        ("AUSENTE", "Ausente"),
+        ("RETRASO", "Retraso"),
+        ("FALTA_JUSTIFICADA", "Falta justificada"),
+    ]
+
+    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE)
+    student = models.ForeignKey("academics.Student", on_delete=models.PROTECT)
+    status = models.CharField(max_length=18, choices=STATUS_CHOICES, default="PRESENTE")
+    arrival_time = models.TimeField(null=True, blank=True)
+    justification = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+    recorded_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-recorded_at"]
+        unique_together = [("session", "student")]
+
+    def clean(self):
+        from academics.models import Enrollment
+        enrolled = Enrollment.objects.filter(
+            student=self.student,
+            grade=self.session.grade,
+            section=self.session.section,
+            period=self.session.period,
+            status="ACTIVE"
+        ).exists()
+        if not enrolled:
+            raise ValidationError("El estudiante no está matriculado en esta sección")
+
+        if self.status == "RETRASO" and not self.arrival_time:
+            raise ValidationError("Debe especificar hora de llegada para retrasos")
+        if self.status == "FALTA_JUSTIFICADA" and not self.justification:
+            raise ValidationError("Debe justificar una falta justificada")
+
+    def save(self, *args, **kwargs):
+        if self.status == "PRESENTE" and not self.arrival_time:
+            self.arrival_time = self.session.start_time
+        if self.status in ["AUSENTE", "FALTA_JUSTIFICADA"]:
+            self.arrival_time = None
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.student.code} - {self.status} ({self.session.date})"
+
+
+class StudentQRCode(models.Model):
+    """Código QR o de barras asignado a un estudiante."""
+    CODE_TYPES = [
+        ("PERMANENT", "Permanente"),
+        ("TEMPORARY", "Temporal"),
+    ]
+
+    student = models.ForeignKey("academics.Student", on_delete=models.CASCADE)
+    code = models.CharField(max_length=80, unique=True)
+    code_type = models.CharField(max_length=12, choices=CODE_TYPES, default="PERMANENT")
+    is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    qr_image = models.ImageField(upload_to="qr_codes/", null=True, blank=True)
+    scan_count = models.PositiveIntegerField(default=0)
+    last_scanned = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = f"{self.student.code}-{get_random_string(6).upper()}"
+        if not self.qr_image:
+            self._generate_qr_image()
+        super().save(*args, **kwargs)
+
+    def _generate_qr_image(self):
+        qr = qrcode.QRCode(box_size=8, border=2)
+        qr.add_data({"student_id": self.student.id, "code": self.code})
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        self.qr_image.save(f"qr_{self.code}.png", ContentFile(buffer.getvalue()), save=False)
+
+    def record_scan(self):
+        self.scan_count += 1
+        self.last_scanned = timezone.now()
+        self.save(update_fields=["scan_count", "last_scanned"])
+
+    def is_valid(self):
+        if not self.is_active:
+            return False, "Código inactivo"
+        if self.expires_at and timezone.now() > self.expires_at:
+            return False, "Código expirado"
+        return True, "Válido"
+
+    def __str__(self):
+        return f"{self.student.code} - {self.code}"
+
+
+class AttendanceScanLog(models.Model):
+    """Log de escaneos QR."""
+    SCAN_STATUS = [
+        ("SUCCESS", "Éxito"),
+        ("INVALID_CODE", "Código inválido"),
+        ("DUPLICATE", "Duplicado"),
+        ("NOT_ENROLLED", "No matriculado"),
+        ("ERROR", "Error"),
+    ]
+
+    scanned_code = models.CharField(max_length=100)
+    scan_status = models.CharField(max_length=20, choices=SCAN_STATUS)
+    student_qr = models.ForeignKey(StudentQRCode, null=True, blank=True, on_delete=models.SET_NULL)
+    attendance_record = models.ForeignKey(AttendanceRecord, null=True, blank=True, on_delete=models.SET_NULL)
+    session = models.ForeignKey(AttendanceSession, null=True, blank=True, on_delete=models.SET_NULL)
+    scanned_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    message = models.TextField(blank=True)
+    scanned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-scanned_at"]
+
+    def __str__(self):
+        return f"{self.scanned_code} - {self.scan_status}"
+    
+#FIN ASISTENCIA _____________________________________
