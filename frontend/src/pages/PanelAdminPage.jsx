@@ -58,6 +58,8 @@ export default function PanelAdminPage() {
         return <EnrollmentsContent />;
       // case 'reports':
       //   return <ReportsContent />;
+      case 'attendance':
+        return <AttendanceContent />; // asistencia 
       default:
         return <DashboardContent />;
     }
