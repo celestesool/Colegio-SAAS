@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
 import Cargar from './../components/document/Cargar';
-import { Extraer } from '../components/document/extraer';
+import { Extraer } from '../components/document/Extraer';
 import { SubirExcel } from '../components/document/SubirExcel';
 import styles from './Document.module.css'; 
 
