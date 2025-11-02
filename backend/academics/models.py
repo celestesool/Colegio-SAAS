@@ -237,6 +237,463 @@ class Enrollment(models.Model):
     def __str__(self):
         return f"{self.student.code} @ {self.period.name} - {self.grade.name}/{self.section.name}"
 
+# DOCENTES Y ASIGNACIONES
+# ------------------------------------------------------
+
+class Teacher(models.Model):
+    """
+    Docente. Debe tener cuenta User obligatoriamente.
+    Extiende Person con datos específicos del docente.
+    """
+    person = models.OneToOneField(
+        "academics.Person",
+        on_delete=models.PROTECT,
+        related_name="teacher"
+    )
+    user = models.OneToOneField(
+        "accounts.User",
+        on_delete=models.PROTECT,
+        related_name="teacher",
+        help_text="Usuario para acceso al sistema (obligatorio)"
+    )
+    employee_code = models.CharField(
+        max_length=30,
+        unique=True,
+        help_text="Código de empleado/docente"
+    )
+    specialization = models.CharField(max_length=150, blank=True)
+    hire_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["employee_code"]
+        indexes = [
+            models.Index(fields=["employee_code"]),
+            models.Index(fields=["user"]),
+        ]
+
+    def clean(self):
+        if self.user and self.user.role != "DOC":
+            raise ValidationError("El usuario debe tener rol 'DOC' (Docente)")
+
+    def __str__(self):
+        return f"{self.employee_code} - {self.person}"
+
+
+class TeacherAssignment(models.Model):
+    """
+    Asignación docente a materia-grado-sección en período académico.
+    Permite múltiples asignaciones con validación de choques de horario.
+    """
+    teacher = models.ForeignKey(
+        "academics.Teacher",
+        on_delete=models.PROTECT,
+        related_name="assignments"
+    )
+    subject = models.ForeignKey(
+        "academics.Subject",
+        on_delete=models.PROTECT,
+        related_name="assignments"
+    )
+    grade = models.ForeignKey(
+        "academics.Grade",
+        on_delete=models.PROTECT,
+        related_name="teacher_assignments"
+    )
+    section = models.ForeignKey(
+        "academics.Section",
+        on_delete=models.PROTECT,
+        related_name="teacher_assignments"
+    )
+    period = models.ForeignKey(
+        "academics.AcademicPeriod",
+        on_delete=models.PROTECT,
+        related_name="teacher_assignments"
+    )
+    
+    schedule_day = models.CharField(
+        max_length=10,
+        blank=True,
+        choices=[
+            ("LUN", "Lunes"),
+            ("MAR", "Martes"),
+            ("MIE", "Miércoles"),
+            ("JUE", "Jueves"),
+            ("VIE", "Viernes"),
+            ("SAB", "Sábado"),
+        ]
+    )
+    schedule_start = models.TimeField(null=True, blank=True)
+    schedule_end = models.TimeField(null=True, blank=True)
+    
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["period", "grade", "section", "subject"]
+        unique_together = [
+            ("teacher", "subject", "grade", "section", "period")
+        ]
+        indexes = [
+            models.Index(fields=["teacher", "period"]),
+            models.Index(fields=["grade", "section", "period"]),
+            models.Index(fields=["subject", "period"]),
+        ]
+
+    def clean(self):
+        if self.subject and self.grade:
+            if self.subject.level_id != self.grade.level_id:
+                raise ValidationError(
+                    "La materia debe pertenecer al mismo nivel educativo que el grado"
+                )
+        
+        if self.section and self.grade:
+            if self.section.grade_id != self.grade.id:
+                raise ValidationError(
+                    "La sección debe pertenecer al grado seleccionado"
+                )
+        
+        if self.schedule_start and self.schedule_end:
+            if self.schedule_end <= self.schedule_start:
+                raise ValidationError(
+                    "La hora de fin debe ser posterior a la de inicio"
+                )
+            
+            if self.schedule_day:
+                conflicting = TeacherAssignment.objects.filter(
+                    teacher=self.teacher,
+                    period=self.period,
+                    schedule_day=self.schedule_day,
+                    is_active=True
+                ).exclude(pk=self.pk if self.pk else None)
+                
+                for assignment in conflicting:
+                    if assignment.schedule_start and assignment.schedule_end:
+                        if (
+                            (self.schedule_start < assignment.schedule_end and 
+                             self.schedule_end > assignment.schedule_start)
+                        ):
+                            raise ValidationError(
+                                f"Choque de horario con {assignment.subject.name} "
+                                f"en {assignment.grade.name}{assignment.section.name} "
+                                f"({assignment.schedule_start}-{assignment.schedule_end})"
+                            )
+
+    def __str__(self):
+        return (
+            f"{self.teacher.employee_code} → {self.subject.short_name or self.subject.name} "
+            f"({self.grade.name}{self.section.name}) - {self.period.name}"
+        )
+
+# FIN DOCENTES
+
+
+# SISTEMA DE CALIFICACIONES
+# ------------------------------------------------------
+
+class GradingDimension(models.Model):
+    """
+    Dimensiones de evaluación del sistema boliviano.
+    Ser, Saber, Hacer, Decidir - con ponderación configurable.
+    """
+    DIMENSION_CHOICES = [
+        ("SER", "Ser"),
+        ("SABER", "Saber"),
+        ("HACER", "Hacer"),
+        ("DECIDIR", "Decidir"),
+    ]
+    
+    name = models.CharField(max_length=20, choices=DIMENSION_CHOICES, unique=True)
+    description = models.TextField(blank=True)
+    default_weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=25.00,
+        help_text="Porcentaje de peso (0-100)"
+    )
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def clean(self):
+        if self.default_weight < 0 or self.default_weight > 100:
+            raise ValidationError("El peso debe estar entre 0 y 100")
+
+    def __str__(self):
+        return f"{self.get_name_display()} ({self.default_weight}%)"
+
+
+class GradingPeriod(models.Model):
+    """
+    Períodos de evaluación: Trimestre 1, 2, 3 dentro de un período académico.
+    """
+    PERIOD_CHOICES = [
+        ("T1", "Trimestre 1"),
+        ("T2", "Trimestre 2"),
+        ("T3", "Trimestre 3"),
+    ]
+    
+    academic_period = models.ForeignKey(
+        "academics.AcademicPeriod",
+        on_delete=models.CASCADE,
+        related_name="grading_periods"
+    )
+    name = models.CharField(max_length=10, choices=PERIOD_CHOICES)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["academic_period", "name"]
+        unique_together = [("academic_period", "name")]
+        indexes = [
+            models.Index(fields=["academic_period", "name"]),
+        ]
+
+    def clean(self):
+        if self.end_date <= self.start_date:
+            raise ValidationError("La fecha fin debe ser posterior a la fecha inicio")
+        
+        # Validar que esté dentro del período académico
+        if self.academic_period:
+            if self.start_date < self.academic_period.start_date:
+                raise ValidationError(
+                    "El trimestre no puede iniciar antes del período académico"
+                )
+            if self.end_date > self.academic_period.end_date:
+                raise ValidationError(
+                    "El trimestre no puede finalizar después del período académico"
+                )
+
+    def __str__(self):
+        return f"{self.get_name_display()} - {self.academic_period.name}"
+
+
+class DimensionWeight(models.Model):
+    """
+    Ponderación personalizada de dimensiones por materia y grado.
+    Si no existe, usa default_weight de GradingDimension.
+    """
+    subject = models.ForeignKey(
+        "academics.Subject",
+        on_delete=models.CASCADE,
+        related_name="dimension_weights"
+    )
+    grade = models.ForeignKey(
+        "academics.Grade",
+        on_delete=models.CASCADE,
+        related_name="dimension_weights"
+    )
+    dimension = models.ForeignKey(
+        "academics.GradingDimension",
+        on_delete=models.CASCADE,
+        related_name="custom_weights"
+    )
+    weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        help_text="Porcentaje de peso (0-100)"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("subject", "grade", "dimension")]
+        indexes = [
+            models.Index(fields=["subject", "grade"]),
+        ]
+
+    def clean(self):
+        if self.weight < 0 or self.weight > 100:
+            raise ValidationError("El peso debe estar entre 0 y 100")
+        
+        # Validar que la suma de pesos no exceda 100
+        total = DimensionWeight.objects.filter(
+            subject=self.subject,
+            grade=self.grade
+        ).exclude(pk=self.pk if self.pk else None).aggregate(
+            total=models.Sum("weight")
+        )["total"] or 0
+        
+        if total + self.weight > 100:
+            raise ValidationError(
+                f"La suma de pesos no puede exceder 100%. Actual: {total}%"
+            )
+
+    def __str__(self):
+        return f"{self.dimension.name} - {self.subject.name} ({self.grade.name}): {self.weight}%"
+
+
+class StudentGrade(models.Model):
+    """
+    Calificación individual de un estudiante en una materia.
+    Por dimensión, trimestre, materia y período académico.
+    """
+    enrollment = models.ForeignKey(
+        "academics.Enrollment",
+        on_delete=models.CASCADE,
+        related_name="grades"
+    )
+    subject = models.ForeignKey(
+        "academics.Subject",
+        on_delete=models.PROTECT,
+        related_name="student_grades"
+    )
+    dimension = models.ForeignKey(
+        "academics.GradingDimension",
+        on_delete=models.PROTECT,
+        related_name="student_grades"
+    )
+    grading_period = models.ForeignKey(
+        "academics.GradingPeriod",
+        on_delete=models.PROTECT,
+        related_name="student_grades"
+    )
+    
+    score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        help_text="Nota de 1 a 100"
+    )
+    
+    # Auditoría: quién registró y cuándo
+    teacher_assignment = models.ForeignKey(
+        "academics.TeacherAssignment",
+        on_delete=models.PROTECT,
+        related_name="registered_grades",
+        help_text="Asignación del docente que registró la nota"
+    )
+    recorded_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.PROTECT,
+        related_name="recorded_grades"
+    )
+    
+    notes = models.TextField(blank=True)
+    
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-recorded_at"]
+        unique_together = [
+            ("enrollment", "subject", "dimension", "grading_period")
+        ]
+        indexes = [
+            models.Index(fields=["enrollment", "subject"]),
+            models.Index(fields=["grading_period", "subject"]),
+            models.Index(fields=["teacher_assignment"]),
+        ]
+
+    def clean(self):
+        # Validar rango de nota
+        if self.score < 1 or self.score > 100:
+            raise ValidationError("La nota debe estar entre 1 y 100")
+        
+        # Validar que enrollment esté activo
+        if self.enrollment and self.enrollment.status != "ACTIVE":
+            raise ValidationError("No se puede calificar una matrícula inactiva")
+        
+        # Validar que subject pertenezca al nivel del enrollment
+        if self.subject and self.enrollment:
+            if self.subject.level_id != self.enrollment.grade.level_id:
+                raise ValidationError(
+                    "La materia debe pertenecer al nivel educativo del estudiante"
+                )
+        
+        # Validar que grading_period pertenezca al período académico del enrollment
+        if self.grading_period and self.enrollment:
+            if self.grading_period.academic_period_id != self.enrollment.period_id:
+                raise ValidationError(
+                    "El trimestre debe pertenecer al período académico de la matrícula"
+                )
+        
+        # Validar que teacher_assignment sea válido para esta materia/grado/sección
+        if self.teacher_assignment and self.enrollment:
+            valid = (
+                self.teacher_assignment.subject_id == self.subject_id and
+                self.teacher_assignment.grade_id == self.enrollment.grade_id and
+                self.teacher_assignment.section_id == self.enrollment.section_id and
+                self.teacher_assignment.period_id == self.enrollment.period_id and
+                self.teacher_assignment.is_active
+            )
+            if not valid:
+                raise ValidationError(
+                    "El docente no tiene asignación válida para esta materia/grado/sección"
+                )
+
+    def __str__(self):
+        return (
+            f"{self.enrollment.student.code} - {self.subject.short_name or self.subject.name} "
+            f"({self.dimension.name}) - {self.grading_period.name}: {self.score}"
+        )
+
+    @property
+    def student(self):
+        return self.enrollment.student
+
+    @property
+    def period(self):
+        return self.enrollment.period
+
+
+class GradeAverage(models.Model):
+    """
+    Promedios calculados por estudiante-materia-trimestre.
+    Se actualiza automáticamente al guardar StudentGrade.
+    """
+    enrollment = models.ForeignKey(
+        "academics.Enrollment",
+        on_delete=models.CASCADE,
+        related_name="grade_averages"
+    )
+    subject = models.ForeignKey(
+        "academics.Subject",
+        on_delete=models.PROTECT,
+        related_name="grade_averages"
+    )
+    grading_period = models.ForeignKey(
+        "academics.GradingPeriod",
+        on_delete=models.PROTECT,
+        related_name="grade_averages"
+    )
+    
+    average = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        help_text="Promedio ponderado de las 4 dimensiones"
+    )
+    
+    calculated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("enrollment", "subject", "grading_period")]
+        indexes = [
+            models.Index(fields=["enrollment", "grading_period"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.enrollment.student.code} - {self.subject.short_name or self.subject.name} "
+            f"({self.grading_period.name}): {self.average}"
+        )
+
+# FIN CALIFICACIONES
 
 #ASISNECIAS
 #------------------------------------------------------

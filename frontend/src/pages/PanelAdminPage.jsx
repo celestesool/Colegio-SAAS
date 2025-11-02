@@ -14,6 +14,7 @@ import {
   StudentsContent,
   EnrollmentsContent,
   AttendanceContent,
+  TeachersContent,
   // ReportsContent,
 } from './content';
 import { Document } from './Document';
@@ -57,6 +58,10 @@ export default function PanelAdminPage() {
         return <PersonsContent />;
       case 'students':
         return <StudentsContent />;
+      case 'teachers': 
+        return <TeachersContent />;
+      case 'scores': 
+        return <ScoresContent />;
       case 'Document':
         return <Document />;
       case 'Asistencia':

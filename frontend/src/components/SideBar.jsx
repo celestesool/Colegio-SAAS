@@ -31,6 +31,8 @@ function Sidebar({ activeSection, setActiveSection }) {
         { id: 'grades', name: 'Grados' },
         { id: 'sections', name: 'Secciones' },
         { id: 'subjects', name: 'Materias' },
+        { id: 'teachers', name: 'Docentes' },
+        { id: 'scores', name: 'Calificaciones' },
         { id: 'Asistencia', name: 'Asistencia' },
         { id: 'Document', name: 'Document' },
       ],

@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
-
+from django.contrib.auth.models import Group, Permission
+from django.contrib.contenttypes.models import ContentType
 
 class UserManager(BaseUserManager):
     """Manager para autenticar por email (sin username)."""
@@ -58,3 +59,190 @@ class User(AbstractUser):
 
     def __str__(self) -> str:
         return f"{self.email} ({self.role})"
+
+
+
+
+class UserManager(BaseUserManager):
+    """Manager para autenticar por email (sin username)."""
+    # ... código existente sin cambios ...
+
+
+class User(AbstractUser):
+    """
+    Usuario base del sistema.
+    - Autenticación por email (único).
+    - Sin 'username'.
+    """
+    # ... código existente sin cambios ...
+    
+    # Métodos adicionales para permisos
+    
+    def assign_role_permissions(self, role_name=None):
+        """
+        Asigna permisos predeterminados según el rol del usuario.
+        Se ejecuta automáticamente al crear/actualizar usuario.
+        """
+        if role_name is None:
+            role_name = self.role
+        
+        # Limpiar grupos anteriores
+        self.groups.clear()
+        
+        # Crear o obtener grupo según rol
+        group, created = Group.objects.get_or_create(name=f"tenant_{role_name}")
+        
+        # Asignar permisos según rol
+        if role_name == "ADMIN":
+            self._assign_admin_permissions(group)
+        elif role_name == "DOC":
+            self._assign_teacher_permissions(group)
+        elif role_name == "EST":
+            self._assign_student_permissions(group)
+        elif role_name == "PAD":
+            self._assign_parent_permissions(group)
+        
+        # Agregar usuario al grupo
+        self.groups.add(group)
+    
+    def _assign_admin_permissions(self, group):
+        """Permisos completos para administrador del colegio"""
+        # Admin tiene acceso total (validado en views con is_staff o role=ADMIN)
+        pass
+    
+    def _assign_teacher_permissions(self, group):
+        """Permisos para docentes"""
+        from django.contrib.contenttypes.models import ContentType
+        
+        # Modelos académicos que el docente puede gestionar
+        models_permissions = [
+            'studentgrade',      # Ver y editar notas de sus estudiantes
+            'gradeaverage',      # Ver promedios
+            'attendancesession', # Gestionar asistencia
+            'attendancerecord',  # Registrar asistencia
+            'enrollment',        # Ver matrículas
+            'student',           # Ver estudiantes
+        ]
+        
+        permissions = []
+        for model_name in models_permissions:
+            try:
+                ct = ContentType.objects.get(app_label='academics', model=model_name)
+                # Agregar permisos view y change
+                permissions.extend(
+                    Permission.objects.filter(
+                        content_type=ct,
+                        codename__in=[f'view_{model_name}', f'change_{model_name}', f'add_{model_name}']
+                    )
+                )
+            except ContentType.DoesNotExist:
+                pass
+        
+        group.permissions.set(permissions)
+    
+    def _assign_student_permissions(self, group):
+        """Permisos para estudiantes (solo lectura de sus datos)"""
+        models_permissions = [
+            'studentgrade',      # Ver sus propias notas
+            'gradeaverage',      # Ver sus promedios
+            'attendancerecord',  # Ver su asistencia
+            'enrollment',        # Ver su matrícula
+        ]
+        
+        permissions = []
+        for model_name in models_permissions:
+            try:
+                ct = ContentType.objects.get(app_label='academics', model=model_name)
+                # Solo view
+                perm = Permission.objects.filter(
+                    content_type=ct,
+                    codename=f'view_{model_name}'
+                ).first()
+                if perm:
+                    permissions.append(perm)
+            except ContentType.DoesNotExist:
+                pass
+        
+        group.permissions.set(permissions)
+    
+    def _assign_parent_permissions(self, group):
+        """Permisos para padres (ver datos de sus hijos)"""
+        # Mismos permisos que estudiantes por ahora
+        self._assign_student_permissions(group)
+    
+    def has_tenant_permission(self, permission_codename, obj=None):
+        """
+        Verifica si el usuario tiene un permiso específico.
+        Incluye validaciones por rol y asignaciones.
+        """
+        # Superusuarios siempre tienen permiso
+        if self.is_superuser:
+            return True
+        
+        # Admin del colegio tiene acceso total
+        if self.role == "ADMIN":
+            return True
+        
+        # Verificar permiso en Django
+        if self.has_perm(f'academics.{permission_codename}'):
+            # Validación adicional por objeto (para docentes)
+            if obj and self.role == "DOC":
+                return self._validate_teacher_access(obj)
+            return True
+        
+        return False
+    
+    def _validate_teacher_access(self, obj):
+        """
+        Valida que el docente tenga acceso al objeto específico.
+        Solo accede a datos de sus asignaciones.
+        """
+        try:
+            teacher = self.teacher
+            
+            # Para StudentGrade, verificar teacher_assignment
+            if hasattr(obj, 'teacher_assignment'):
+                return obj.teacher_assignment.teacher == teacher
+            
+            # Para Enrollment, verificar si tiene asignación en esa sección
+            if hasattr(obj, 'section'):
+                from academics.models import TeacherAssignment
+                return TeacherAssignment.objects.filter(
+                    teacher=teacher,
+                    grade=obj.grade,
+                    section=obj.section,
+                    period=obj.period,
+                    is_active=True
+                ).exists()
+            
+            return True
+        except:
+            return False
+    
+    def get_accessible_assignments(self):
+        """
+        Obtiene las asignaciones accesibles para el usuario.
+        Útil para filtrar datos en el frontend.
+        """
+        if self.role != "DOC":
+            return None
+        
+        try:
+            from academics.models import TeacherAssignment
+            return TeacherAssignment.objects.filter(
+                teacher=self.teacher,
+                is_active=True
+            ).select_related('subject', 'grade', 'section', 'period')
+        except:
+            return TeacherAssignment.objects.none()
+
+    def save(self, *args, **kwargs):
+        """
+        Override save para asignar permisos automáticamente.
+        """
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        
+        # Asignar permisos después de crear el usuario
+        if is_new or 'role' in kwargs.get('update_fields', []):
+            self.assign_role_permissions()
