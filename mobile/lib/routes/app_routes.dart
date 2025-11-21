@@ -15,16 +15,24 @@ import '../features/parent/screens/parent_notas_screen.dart';
 import '../features/parent/screens/parent_asistencia_screen.dart';
 import '../features/parent/screens/select_child_screen.dart'; 
 import '../features/parent/screens/parent_agenda_screen.dart';
-import '../features/parent/screens/parent_agenda_screen.dart';
 
 // Announcements
 import '../features/announcements/screens/announcements_screen.dart';
 
-// nuevo 
+// Teacher
 import '../features/teacher/screens/teacher_dashboard.dart';
 
-// teacher
+// Horario
 import '../features/horario/screens/horario_screen.dart';
+
+// Notifications
+import '../features/notifications/screens/received_notifications_screen.dart';
+import '../features/notifications/screens/create_notification_screen.dart';
+
+// Profile
+import '../features/profile/screens/profile_photo_screen.dart';
+import '../features/profile/screens/edit_profile_photo_screen.dart';
+import '../features/profile/screens/notification_settings_screen.dart';
 
 
 
@@ -44,14 +52,21 @@ class AppRoutes {
   static const String selectChild = "/selectChild"; 
   static const String parentAgenda = "/parentAgenda";
 
-  //Nuevo 
+  // Teacher
   static const String teacherDashboard = "/teacherDashboard";
-  static const String horario = "/horario";
   
-
-
   // Shared
   static const String announcements = "/announcements";
+  static const String horario = "/horario";
+  
+  // Notifications
+  static const String receivedNotifications = "/receivedNotifications";
+  static const String createNotification = "/createNotification";
+  
+  // Profile
+  static const String profilePhoto = "/profilePhoto";
+  static const String editProfilePhoto = "/editProfilePhoto";
+  static const String notificationSettings = "/notificationSettings";
 
   static Map<String, WidgetBuilder> routes = {
     // Auth
@@ -70,19 +85,20 @@ class AppRoutes {
     parentAsistencia: (context) => const ParentAsistenciaScreen(),
     parentAgenda: (context) => const ParentAgendaScreen(),
 
-    //teacher 
-    teacherDashboard: (context) => const TeacherDashboard(), // pantalla vacía por ahora
+    // Teacher
+    teacherDashboard: (context) => const TeacherDashboard(),
     
-    
-    //Horario
-    horario: (context) => const HorarioScreen(), // pantalla dummy
-   
-
-
-
-
-
     // Shared
     announcements: (context) => const AnnouncementsScreen(),
+    horario: (context) => const HorarioScreen(),
+
+    // Notifications
+    receivedNotifications: (context) => const ReceivedNotificationsScreen(),
+    createNotification: (context) => const CreateNotificationScreen(),
+    
+    // Profile
+    profilePhoto: (context) => const ProfilePhotoScreen(),
+    editProfilePhoto: (context) => const EditProfilePhotoScreen(),
+    notificationSettings: (context) => const NotificationSettingsScreen(),
   };
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../../routes/app_routes.dart';
+import '../../../core/widgets/app_drawer.dart';
 
 class ParentDashboard extends StatefulWidget {
   const ParentDashboard({super.key});
@@ -47,16 +48,61 @@ class _ParentDashboardState extends State<ParentDashboard> {
         ),
       );
     }
+    final drawerItems = [
+      DrawerItem(
+        icon: Icons.school,
+        label: "Notas",
+        onTap: () => Navigator.pushNamed(
+          context,
+          AppRoutes.parentNotas,
+          arguments: child,
+        ),
+      ),
+      DrawerItem(
+        icon: Icons.check_circle_outline,
+        label: "Asistencia",
+        onTap: () => Navigator.pushNamed(
+          context,
+          AppRoutes.parentAsistencia,
+          arguments: child,
+        ),
+      ),
+      DrawerItem(
+        icon: Icons.campaign_outlined,
+        label: "Anuncios",
+        onTap: () => Navigator.pushNamed(
+          context,
+          AppRoutes.announcements,
+          arguments: child,
+        ),
+      ),
+      DrawerItem(
+        icon: Icons.schedule,
+        label: "Horario",
+        onTap: () => Navigator.pushNamed(
+          context,
+          AppRoutes.horario,
+          arguments: child,
+        ),
+      ),
+      DrawerItem(
+        icon: Icons.event_note,
+        label: "Agenda",
+        onTap: () => Navigator.pushNamed(
+          context,
+          AppRoutes.parentAgenda,
+          arguments: child,
+        ),
+      ),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Dashboard Padre - ${child?["name"] ?? "Hijo"}"),
-        leading: IconButton(
-          icon: const Icon(Icons.logout),
-          onPressed: () {
-            // Aquí puedes limpiar sesión, token, etc.
-            Navigator.pushReplacementNamed(context, "/signIn");
-          },
-        ),
+      ),
+      drawer: AppDrawer(
+        items: drawerItems,
+        userTitle: "Opciones",
       ),
       body: Column(
         children: [
@@ -100,49 +146,9 @@ class _ParentDashboardState extends State<ParentDashboard> {
                   .toList(),
             ),
           ),
-
-          //  Botones de acceso rápido
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              alignment: WrapAlignment.center,
-              children: [
-                _quickButton(context, Icons.school, "Notas",
-                    AppRoutes.parentNotas, child!),
-                _quickButton(context, Icons.check_circle_outline, "Asistencia",
-                    AppRoutes.parentAsistencia, child!),
-                _quickButton(context, Icons.campaign_outlined, "Anuncios",
-                    AppRoutes.announcements, child!),
-                _quickButton(context, Icons.schedule, "Horario",
-                    AppRoutes.horario, child!),
-                _quickButton(context, Icons.event_note, "Agenda",
-                    AppRoutes.parentAgenda, child!),  
-              ],
-            ),
-          ),
         ],
       ),
     );
   }
 
-  //  QuickButton ahora recibe el hijo y lo pasa como argumento
-  Widget _quickButton(BuildContext context, IconData icon, String label,
-      String route, Map<String, dynamic> child) {
-    return ElevatedButton.icon(
-      onPressed: () => Navigator.pushNamed(
-        context,
-        route,
-        arguments: child, // se pasa el hijo seleccionado
-      ),
-      icon: Icon(icon, size: 20),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
-  
 }
