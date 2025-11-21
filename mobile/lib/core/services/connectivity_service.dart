@@ -5,6 +5,7 @@ import 'package:vibration/vibration.dart';
 import 'notification_settings_service.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data';
 
 // Detectar si es web de forma segura
 bool get kIsWeb {
@@ -69,11 +70,14 @@ class ConnectivityService {
         'notificaciones_channel',
         'Notificaciones',
         channelDescription: 'Canal de notificaciones de la app',
-        importance: Importance.high,
-        priority: Priority.high,
+        importance: Importance.max,  // Máxima importancia para que aparezca como banner
+        priority: Priority.max,  // Máxima prioridad
         showWhen: true,
         sound: soundEnabled ? RawResourceAndroidNotificationSound('notification_sound') : null,
         playSound: soundEnabled,
+        enableVibration: vibrationEnabled,  // Habilitar vibración explícitamente
+        vibrationPattern: vibrationEnabled ? Int64List.fromList([0, 500, 200, 500]) : null,  // Patrón de vibración
+        fullScreenIntent: true,  // Mostrar como emergente en pantalla completa
       );
       
       const iosDetails = DarwinNotificationDetails(
@@ -86,11 +90,6 @@ class ConnectivityService {
         android: androidDetails,
         iOS: iosDetails,
       );
-      
-      // Hacer vibrar el dispositivo si está habilitado
-      if (vibrationEnabled && (await Vibration.hasVibrator() ?? false)) {
-        Vibration.vibrate(duration: 500);
-      }
       
       await _flutterLocalNotificationsPlugin.show(
         DateTime.now().millisecond,
