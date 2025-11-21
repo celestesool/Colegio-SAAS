@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../../routes/app_routes.dart';
+import '../../../core/widgets/app_drawer.dart';
 
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key});
@@ -27,16 +28,41 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final drawerItems = [
+      DrawerItem(
+        icon: Icons.school,
+        label: "Notas",
+        onTap: () => Navigator.pushNamed(context, AppRoutes.notas),
+      ),
+      DrawerItem(
+        icon: Icons.check_circle_outline,
+        label: "Asistencia",
+        onTap: () => Navigator.pushNamed(context, AppRoutes.asistencia),
+      ),
+      DrawerItem(
+        icon: Icons.event_note,
+        label: "Agenda",
+        onTap: () => Navigator.pushNamed(context, AppRoutes.agenda),
+      ),
+      DrawerItem(
+        icon: Icons.campaign_outlined,
+        label: "Anuncios",
+        onTap: () => Navigator.pushNamed(context, AppRoutes.announcements),
+      ),
+      DrawerItem(
+        icon: Icons.schedule,
+        label: "Horario",
+        onTap: () => Navigator.pushNamed(context, AppRoutes.horario),
+      ),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Dashboard Estudiante"),
-        leading: IconButton(
-          icon: const Icon(Icons.logout),
-          onPressed: () {
-              // Aquí puedes limpiar sesión, token, etc.
-            Navigator.pushReplacementNamed(context, "/signIn");
-          },
-        ),        
+      ),
+      drawer: AppDrawer(
+        items: drawerItems,
+        userTitle: "Opciones",
       ),
       body: Column(
         children: [
@@ -79,41 +105,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   .toList(),
             ),
           ),
-          //  Botones de accesos rápidos
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              alignment: WrapAlignment.center,
-              children: [
-                _quickButton(
-                    context, Icons.school, "Notas", AppRoutes.notas),
-                _quickButton(context, Icons.check_circle_outline, "Asistencia",
-                    AppRoutes.asistencia),
-                _quickButton(context, Icons.event_note, "Agenda",
-                    AppRoutes.agenda),
-                _quickButton(context, Icons.campaign_outlined, "Anuncios",
-                    AppRoutes.announcements),
-                _quickButton(context, Icons.schedule, "Horario",
-                    AppRoutes.horario),
-              ],
-            ),
-          ),
         ],
-      ),
-    );
-  }
-
-  Widget _quickButton(
-      BuildContext context, IconData icon, String label, String route) {
-    return ElevatedButton.icon(
-      onPressed: () => Navigator.pushNamed(context, route),
-      icon: Icon(icon, size: 20),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }

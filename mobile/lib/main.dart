@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 import 'routes/app_routes.dart';
+import 'core/services/connectivity_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Iniciar polling de notificaciones
+  ConnectivityService().startPolling(
+    interval: const Duration(seconds: 30),
+  );
+  
   runApp(const MyApp());
 }
 

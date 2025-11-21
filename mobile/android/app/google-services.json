@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "460851755936",
+    "project_id": "colegio-57445",
+    "storage_bucket": "colegio-57445.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:460851755936:android:ba8b5224856c47d37982c5",
+        "android_client_info": {
+          "package_name": "colegio.flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUDgZbWXG_MlNAgQWPEmOSZsuzdG59iZA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
